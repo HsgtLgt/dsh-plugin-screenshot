@@ -1,0 +1,5 @@
+# dsh-plugin-screenshot · bundle patch
+# 把 screenshot 工具插件作为一行条目插进 profile 树。
+- insert:
+    - id: screenshot
+      name: dsh-plugin-screenshot
