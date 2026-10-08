@@ -1,65 +1,99 @@
-# dsh-plugin-screenshot
+<div align="center">
 
-面向模型的「截图」工具插件（[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)，Windows 宿主）。
+# 📸 dsh-plugin-screenshot
 
-注册一个 `screenshot` 工具，让会话里的 AI 能真正「看见」并展示你的屏幕。
+**面向模型的「截图」工具插件 · DeepSeek Harness（Windows）**
 
-## 功能
+注册一个 `screenshot` 工具，让会话里的 AI 真正「看见」并展示你的屏幕——
+不只是全屏，被遮挡、被最小化的窗口也能截。
 
-- `target: "screen"` — 截取整个虚拟桌面（多显示器拼接）；
-- `target: "window"` + `window_title` — 按标题子串（不区分大小写）截取顶级窗口；省略 `window_title` 时截取最近活跃的可见窗口；
-- **被遮挡的窗口照常可截**：优先走 `PrintWindow(PW_RENDERFULLCONTENT)`，窗口自己渲染到位图，不依赖是否被盖住；
-- **空白帧兜底**：GPU 渲染的应用（RustDesk / Chrome / Electron 等）被遮挡时 `PrintWindow` 可能返回空白帧，插件会采样检测并自动改用「临时前置 + 屏幕拷贝」，截完把你原来的前台窗口切回去；
-- **最小化窗口**：先自动还原、截图、再缩回最小化（约 0.8 秒）；
-- 从未渲染过内容的隐藏/托盘窗口（无表面）无法截取，会明确报错提示先把它唤起一次；
-- `output_path` — 可选，PNG 相对会话工作区保存（默认 `screenshots/screenshot-<时间戳>.png`）。
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%2B-0078D4?logo=windows11&logoColor=white)](#环境要求)
+[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-%E2%89%A50.2.0-4f46e5)](https://github.com/deepseek-ai/deepseek-harness)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/tag/HsgtLgt/dsh-plugin-screenshot?label=release&sort=semver)](../../releases)
 
-返回值与内置 `read_image` 同构：`<path>/<type>image</type>` 信封 + 原生图像块，
-图片同时通过持久附件服务入库，可在会话里直接查看、之后用 `read_image` 重读、用 `present` 展示。
+</div>
 
-## 环境要求
+---
 
-- Windows 10/11（截屏依赖 Windows PowerShell 与 user32/System.Drawing）；
-- DeepSeek Harness ≥ 0.2.0；
-- 当前模型需支持图像输入（返回原生图像块）。
+## ✨ 它解决什么问题
 
-## 安装
+DSH 为「电脑使用」预留了能力位，但桌面版没有自带本机截屏工具。
+本插件把这个坑填上，并处理了真实世界里的棘手情况：
+
+| 场景 | 普通 CopyFromScreen | 本插件 |
+| --- | :---: | :---: |
+| 窗口在屏幕上可见 | ✅ | ✅ |
+| 窗口被其他窗口**完全遮挡** | ❌ 截到的是盖在上面的内容 | ✅ `PrintWindow` 让窗口自绘 |
+| GPU 渲染应用遮挡后返回**空白帧**（RustDesk / Chrome / Electron…） | — | ✅ 采样检测 + 自动「临时前置」兜底，截完把前台切回去 |
+| 窗口**最小化** | ❌ | ✅ 自动还原 → 截图 → 缩回 |
+| 缩到托盘（无渲染表面） | ❌ | ⚠️ 明确报错并提示先唤起一次 |
+| 远程桌面窗口内容（RustDesk / ToDesk） | 看运气 | ✅ 实测可用 |
+
+## 🚀 安装
 
 ```powershell
 git clone https://github.com/HsgtLgt/dsh-plugin-screenshot.git
 ```
 
-然后在 DSH 插件管理（plugin_manager）中执行 `install_bundle`，指向克隆出的目录：
+在 DSH 插件管理（plugin_manager）中执行 `install_bundle`，指向克隆目录：
 
 ```
 file:<克隆目录>/dsh-plugin-screenshot
 ```
 
-对等依赖 `@deepseek-ai/dsh-tools` / `@deepseek-ai/cordis` 由 DSH 运行时树提供，无需手动安装。
-安装/升级后需重启 DSH 应用使工具描述生效。
+重启 DSH 应用即生效。对等依赖 `@deepseek-ai/dsh-tools` / `@deepseek-ai/cordis`
+由运行时树提供，无需手动安装。
 
-## 工具 schema
+## 🛠 工具参数
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| `target` | `screen` \| `window` | 截图目标，默认 `screen` |
-| `window_title` | string | `target=window` 时的标题子串匹配 |
-| `output_path` | string | 可选保存路径（相对会话工作区） |
+| `target` | `screen` \| `window` | 截图目标，默认 `screen`（多显示器虚拟桌面） |
+| `window_title` | string | `target=window` 时的标题子串匹配（不区分大小写） |
+| `output_path` | string | 可选保存路径，相对会话工作区；默认 `screenshots/screenshot-<时间戳>.png` |
 
-## 实现方式
+模型侧约定（写在工具描述里，自动生效）：
+用户点名某个应用时必须用 `window` 模式；截图成功后必须用 `![截图](<路径>)` 内嵌展示。
 
-- 路径解析走 `ctx.fs`（与 read/write 工具同一后端，含 cwd 归一化）；
-- 截屏通过 `ctx.subprocess` 调 Windows PowerShell：`System.Drawing CopyFromScreen`
-  + `user32 GetWindowRect / PrintWindow(PW_RENDERFULLCONTENT) / ShowWindow / SetForegroundWindow`，
-  无任何原生依赖；
-- 图片经 `ctx.attachments.saveImage` 持久化，遵守部署的图片字节/像素上限。
+## 🎬 效果
 
-## 已知限制
+被完全遮挡的窗口，一行调用直接拿到完整画面（此图即插件自身截取）：
 
-- GPU 硬件渲染的窗口长期被遮挡后，`PrintWindow` 可能拿到**过期帧**（内容是旧的但非空白），
-  此时空白检测无法识别，重截一次通常即可；
-- 完全没有渲染表面的隐藏/托盘窗口截不了，会报错提示先唤起一次。
+![demo](docs/demo-window.png)
+
+## ⚙️ 实现原理
+
+```text
+模型调用 screenshot()
+  ├─ ctx.fs.resolve()          相对路径 → 工作区绝对路径
+  ├─ ctx.subprocess 启动 PowerShell
+  │    Get-Process 标题匹配 → HWND
+  │    最小化 → ShowWindow 还原
+  │    PrintWindow(PW_RENDERFULLCONTENT) 自绘到位图
+  │    采样 100 像素查空白 → 空白则临时前置 + CopyFromScreen
+  │    写 PNG → "OK 宽x高 方法"
+  ├─ ctx.fs.readBytes()        读回字节
+  └─ ctx.attachments.saveImage()  校验/降采样 → 持久对象库
+       ↓
+  返回 路径信封 + 原生图像块（模型看见 + 用户可见）
+```
+
+无原生依赖：只调 Windows PowerShell 与 user32 / System.Drawing。
+图片文件永久保留在会话工作区，展示副本由 DSH 附件库按内容寻址去重存储。
+
+## ⚠️ 已知限制
+
+- GPU 硬件渲染的窗口**长期遮挡**后可能拿到过期帧（内容旧但非空白），重截一次即可；
+- 从未渲染过内容的隐藏/托盘窗口没有可截表面，会明确报错；
+- 仅支持 Windows；模型侧需支持图像输入。
+
+## 🔎 与社区同类插件的区别
+
+社区已有若干优秀的「人截给 AI 看」插件（框选标注、快捷键截前台窗口进输入框等）。
+本插件是反向的「**AI 自己伸手截**」：任务执行途中由模型发起、支持遮挡/最小化、
+结果直接进入模型上下文并展示给用户。两者互补，不冲突。
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) © HsgtLgt
