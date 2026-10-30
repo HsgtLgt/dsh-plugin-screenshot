@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-screenshot",
   "description": "截图工具：截取整个桌面或按标题截取窗口，PNG 存入会话工作区并以原生图像块返回（DeepSeek Harness · Windows）",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
